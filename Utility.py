@@ -52,3 +52,8 @@ def Init():
         print(f"Close database {(datetime.now()).strftime('%Y-%m-%d %H:%M:%S')}")
 
         return stock_code_list, code_name_dict, df
+    
+def PreprocessData(data: pd.DataFrame) -> pd.DataFrame:
+    data = data.drop('id', axis=1)
+    data = data[data['volume'] >= 1000]
+    return data
