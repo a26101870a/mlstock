@@ -75,3 +75,23 @@ def GetPriceByTypeId(type_id: int, connection:Union[PooledMySQLConnection, MySQL
         print(f"Error: {e}")
         return pd.DataFrame()
     
+def GetCodeByTypeId(type_id: int, connection:Union[PooledMySQLConnection, MySQLConnectionAbstract]) -> pd.DataFrame:
+
+    sql_query = f"""
+        SELECT 
+            code
+        FROM
+            stock.stock_code_type
+        WHERE
+            stock_type_id = {type_id};
+    """
+
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute(sql_query)
+            records = cursor.fetchall()
+            column_names = [desc[0] for desc in cursor.description]
+            return pd.DataFrame(records, columns=column_names)
+    except Exception as e:
+        print(f"Error: {e}")
+        return pd.DataFrame()

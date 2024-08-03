@@ -2,10 +2,13 @@ import SQLSentence
 import mysql
 import datetime
 import pandas as pd
+import torch
 
 # Constants
 TABLE_STOCK_CODE = 'stock.stock_code'
 TABLE_STOCK_PRICE = 'stock.stock_price'
+
+THRESHOLD_VOLUME = 1000
 
 # Functions
 def GetStockCodeInformation(connection):
@@ -42,7 +45,6 @@ def connect_to_database():
 def Init():
     with connect_to_database() as connection:
     
-        # 检查是否连接成功
         if connection.is_connected():
             print(f"Connected to MySQL database {(datetime.now()).strftime('%Y-%m-%d %H:%M:%S')}")
 
@@ -55,5 +57,10 @@ def Init():
     
 def PreprocessData(data: pd.DataFrame) -> pd.DataFrame:
     data = data.drop('id', axis=1)
-    data = data[data['volume'] >= 1000]
+    data = data[data['volume'] >= THRESHOLD_VOLUME]
+    return data
+
+def ProcessData(data: pd.DataFrame) -> torch.Tensor:
+    data = data.drop(['code', 'date'], axis=1)
+    data = data.apply(pd.to_numeric, downcast='float').to_numpy()
     return data
