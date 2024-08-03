@@ -1,0 +1,6 @@
+Lib/
+Scripts/
+share/
+__pycache__/
+pyvenv.cfg
+mysql_logging_information.txt
