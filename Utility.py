@@ -2,7 +2,6 @@ import SQLSentence
 import mysql
 import datetime
 import pandas as pd
-import torch
 
 # Constants
 TABLE_STOCK_CODE = 'stock.stock_code'
@@ -55,13 +54,3 @@ def Init():
         print(f"Close database {(datetime.now()).strftime('%Y-%m-%d %H:%M:%S')}")
 
         return stock_code_list, code_name_dict, df
-    
-def PreprocessData(data: pd.DataFrame) -> pd.DataFrame:
-    data = data.drop('id', axis=1)
-    data = data[data['volume'] >= THRESHOLD_VOLUME]
-    return data
-
-def ProcessData(data: pd.DataFrame) -> torch.Tensor:
-    data = data.drop(['code', 'date'], axis=1)
-    data = data.apply(pd.to_numeric, downcast='float').to_numpy()
-    return data
