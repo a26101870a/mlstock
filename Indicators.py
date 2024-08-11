@@ -93,7 +93,7 @@ def GenerateMassIndex(df):
     df['MassIndex'] = df['EMA_Ratio'].rolling(window=25).sum()
     return df.drop(columns=['DailyRange', 'EMA_9_Range','EMA_Ratio'])
 
-def CalculateTrendAndInverse(df, initial_af=0.02, step_af=0.02, max_af=0.20):
+def GenerateSARInverse(df, initial_af=0.02, step_af=0.02, max_af=0.20):
     high = df['high'].values
     low = df['low'].values
     close = df['close'].values
@@ -143,3 +143,194 @@ def CalculateTrendAndInverse(df, initial_af=0.02, step_af=0.02, max_af=0.20):
     df['Inverse'] = inverse
 
     return df
+
+def GenerateTRIX(df, period=30, price_type='close'):
+    ema1 = df[price_type].ewm(span=period, adjust=False).mean()
+    
+    # Calculate the second EMA (EMA of the first EMA)
+    ema2 = ema1.ewm(span=period, adjust=False).mean()
+    
+    # Calculate the third EMA (EMA of the second EMA)
+    ema3 = ema2.ewm(span=period, adjust=False).mean()
+    
+    # Calculate the Rate of Change of the Triple EMA
+    df['TRIX'] = ema3.pct_change() * 100
+
+    return df
+
+def GenerateVortex(df, period=21):
+    df['prev_high'] = df['high'].shift(1)
+    df['prev_low'] = df['low'].shift(1)
+    df['prev_close'] = df['close'].shift(1)
+
+    df['TR'] = np.maximum(
+        df['high'] - df['low'],
+        np.abs(df['high'] - df['prev_close']),
+        np.abs(df['low'] - df['prev_close'])
+    )
+
+    df['VM+'] = np.abs(df['high'] - df['prev_low'])
+    df['VM-'] = np.abs(df['low'] - df['prev_high'])
+
+    df['sum_TR'] = df['TR'].rolling(window=period).sum()
+    df['sum_VM+'] = df['VM+'].rolling(window=period).sum()
+    df['sum_VM-'] = df['VM-'].rolling(window=period).sum()
+
+    df['VI+'] = df['sum_VM+'] / df['sum_TR']
+    df['VI-'] = df['sum_VM-'] / df['sum_TR']
+
+    return df.drop(columns=['prev_high', 'prev_low', 'prev_close', 'TR', 'VM+', 'VM-', 'sum_VM+', 'sum_VM-', 'sum_TR'])
+
+def GenerateMoneyFlowIndex(df, period=14):
+    typical_price = (df['high'] + df['low'] + df['close']) / 3
+    raw_money_flow = typical_price * df['volume']
+    
+    positive_money_flow = np.zeros_like(raw_money_flow)
+    negative_money_flow = np.zeros_like(raw_money_flow)
+    
+    typical_price_array = typical_price.to_numpy()
+
+    for i in range(1, len(df)):
+        if typical_price_array[i] > typical_price_array[i - 1]:
+            positive_money_flow[i] = raw_money_flow.iloc[i]
+        else:
+            negative_money_flow[i] = raw_money_flow.iloc[i]
+
+    positive_money_flow_series = pd.Series(positive_money_flow, index=df.index)
+    negative_money_flow_series = pd.Series(negative_money_flow, index=df.index)
+
+    positive_money_flow_sum = positive_money_flow_series.rolling(window=period).sum()
+    negative_money_flow_sum = negative_money_flow_series.rolling(window=period).sum()
+
+    money_flow_ratio = positive_money_flow_sum / negative_money_flow_sum
+    mfi = 100 - (100 / (1 + money_flow_ratio))
+
+    df['MFI'] = mfi
+
+    return df
+
+def GenerateKDJ(df, period=9):
+    low_list=df['low'].rolling(window=period).min()
+    # low_list.fillna(value=df['low'].expanding().min(), inplace=True)
+    high_list = df['high'].rolling(window=9).max()
+    # high_list.fillna(value=df['high'].expanding().max(), inplace=True)
+    rsv = (df['close'] - low_list) / (high_list - low_list) * 100
+    df['KDJ_K'] = rsv.ewm(com=2).mean()
+    df['KDJ_D'] = df['KDJ_K'].ewm(com=2).mean()
+    df['KDJ_J'] = 3 * df['KDJ_K'] - 2 * df['KDJ_D']
+    
+    return df
+
+def GenerateTSI(df, long_period=25, short_period=13, price_type='close'):
+    df['PC'] = df[price_type] - df[price_type].shift()
+
+    df['EMA1_PC'] = df['PC'].ewm(span=short_period, adjust=False).mean()
+    df['EMA1_AbsPC'] = df['PC'].abs().ewm(span=short_period, adjust=False).mean()
+
+    df['EMA2_PC'] = df['EMA1_PC'].ewm(span=long_period, adjust=False).mean()
+    df['EMA2_AbsPC'] = df['EMA1_AbsPC'].ewm(span=long_period, adjust=False).mean()
+
+    df['TSI'] = 100 * (df['EMA2_PC'] / df['EMA2_AbsPC'])
+
+    return df.drop(columns=['PC', 'EMA1_PC', 'EMA1_AbsPC', 'EMA2_PC', 'EMA2_AbsPC'])
+
+def GenerateUltimateOscillator(df, short_period=7, medium_period=14, long_period=28):
+    df['prev_close'] = df['close'].shift()
+    df['BP'] = df['close'] - np.minimum(df['low'], df['prev_close'])
+
+    df['TR'] = np.maximum(
+        np.maximum(df['high'] - df['low'], np.abs(df['high'] - df['prev_close'])),
+        np.abs(df['low'] - df['prev_close'])
+    )
+
+    df['AVG1'] = df['BP'].rolling(window=short_period).sum() / df['TR'].rolling(window=short_period).sum()
+    df['AVG2'] = df['BP'].rolling(window=medium_period).sum() / df['TR'].rolling(window=medium_period).sum()
+    df['AVG3'] = df['BP'].rolling(window=long_period).sum() / df['TR'].rolling(window=long_period).sum()
+
+    df['UO'] = 100 * (
+        (4 * df['AVG1'] + 2 * df['AVG2'] + df['AVG3']) /
+        (4 + 2 + 1)
+    )
+    
+    return df.drop(columns=['prev_close', 'BP', 'TR', 'AVG1', 'AVG2', 'AVG3'])
+
+def GenerateWilliamsR(df, period=10):
+    highest_high = df['high'].rolling(window=period).max()
+    lowest_low = df['low'].rolling(window=period).min()
+
+    df['Williams%R'] = ((highest_high - df['close']) / (highest_high - lowest_low)) * -100
+    
+    return df
+
+def GenerateADL(df):
+    df['MFM'] = ((df['close'] - df['low']) - (df['high'] - df['close'])) / (df['high'] - df['low'])
+    df['MFM'] = df['MFM'].fillna(0)
+    df['MFV'] = df['MFM'] * df['volume']
+    df['ADL'] = df['MFV'].cumsum()
+
+    return df.drop(columns=['MFM', 'MFV'])
+
+def GenerateEMV(df):
+    df['Midpoint'] = (df['high'] + df['low']) / 2
+    df['Prev Midpoint'] = df['Midpoint'].shift(1)
+    df['Midpoint Move'] = df['Midpoint'] - df['Prev Midpoint']
+    df['Box Ratio'] = df['volume'] / (df['high'] - df['low'])
+    df['EMV'] = df['Midpoint Move'] / df['Box Ratio']
+
+    return df.drop(columns=['Midpoint', 'Prev Midpoint', 'Midpoint Move', 'Box Ratio'])
+
+def GenerateForceIndex(df):
+    df['prev_close'] = df['close'].shift(1)
+    df['ForceIndex'] = (df['close'] - df['prev_close']) * df['volume']
+
+    return df.drop(columns=['prev_close'])
+
+def GenerateNVI(df, initial_value=1000):
+    df['NVI'] = initial_value
+    for i in range(1, len(df)):
+        if df['volume'].iloc[i] < df['volume'].iloc[i - 1]:
+            df['NVI'].iloc[i] = df['NVI'].iloc[i - 1] + (df['close'].iloc[i] - df['close'].iloc[i - 1])
+        else:
+            df['NVI'].iloc[i] = df['NVI'].iloc[i - 1]
+    
+    return df
+
+def GenerateVPT(df):
+    df['prev_close'] = df['close'].shift()
+    df['price_change'] = (df['close'] - df['prev_close'])/df['prev_close']
+    df['VPT'] = (df['volume'] * df['price_change']).cumsum()
+
+    return df.drop(columns=['prev_close', 'Prev price_change'])
+
+def GenerateATR(df, period=14):
+    df['prev_close'] = df['close'].shift()
+    
+    df['TR'] = np.maximum(
+        np.maximum(df['high'] - df['low'],
+                   np.abs(df['high'] - df['prev_close'])),
+        np.abs(df['low'] - df['prev_close'])
+    )
+    
+    df['ATR'] = df['TR'].rolling(window=period).mean()
+    
+    return df.drop(columns=['TR', 'Prev ATR'])
+
+def GenerateDonchianChannel(df, period=20):
+    df['DonchianUpper'] = df['high'].rolling(window=period).max()
+    df['DonchianLower'] = df['low'].rolling(window=period).min()
+    df['DonchianMiddle'] = (df['DonchianUpper'] + df['DonchianLower']) / 2
+
+    return df
+
+def GenerateKeltnerChannel(df, period=20, multiplier=2):
+    df['TypicalPrice'] = (df['high'] + df['low'] + df['close']) / 3
+    df['MiddleLine'] = df['TypicalPrice'].ewm(span=period, adjust=False).mean()
+    df['TR'] = np.maximum(df['high'] - df['low'], 
+                          np.maximum(np.abs(df['high'] - df['close'].shift()), 
+                                     np.abs(df['low'] - df['close'].shift())))
+    df['ATR'] = df['TR'].rolling(window=period).mean()
+
+    df['UpperBand'] = df['MiddleLine'] + (multiplier * df['ATR'])
+    df['LowerBand'] = df['MiddleLine'] - (multiplier * df['ATR'])
+
+    return df.drop(columns=['TypicalPrice', 'TR', 'ATR'])
