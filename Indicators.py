@@ -139,8 +139,8 @@ def GenerateSARInverse(df, initial_af=0.02, step_af=0.02, max_af=0.20):
                     ep[i] = ep[i-1]
                     af[i] = af[i-1]
 
-    df['trend'] = trend
-    df['Inverse'] = inverse
+    df['trend'] = trend.astype('int8')
+    df['Inverse'] = inverse.astype('int8')
 
     return df
 
@@ -193,12 +193,10 @@ def GenerateMoneyFlowIndex(df, period=14):
     df['Negative MF Sum'] = df['Negative Money Flow'].rolling(window=period).sum()
     df['MFR'] = df['Positive MF Sum'] / df['Negative MF Sum']
 
-    df['MFI1'] = 100 - (100 / (1 + df['MFR']))
+    df['MFI'] = (100 - (100 / (1 + df['MFR']))).astype('float32')
 
-    df.drop(columns=['TP', 'Raw Money Flow', 'prev_TP', 'Positive Money Flow', 'Negative Money Flow', 
+    return df.drop(columns=['TP', 'Raw Money Flow', 'prev_TP', 'Positive Money Flow', 'Negative Money Flow', 
                      'Positive MF Sum', 'Negative MF Sum', 'MFR'])
-
-    return df
 
 def GenerateKDJ(df, period=9):
     low_list=df['low'].rolling(window=period).min()
