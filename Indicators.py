@@ -182,30 +182,21 @@ def GenerateVortex(df, period=21):
     return df.drop(columns=['prev_high', 'prev_low', 'prev_close', 'TR', 'VM+', 'VM-', 'sum_VM+', 'sum_VM-', 'sum_TR'])
 
 def GenerateMoneyFlowIndex(df, period=14):
-    typical_price = (df['high'] + df['low'] + df['close']) / 3
-    raw_money_flow = typical_price * df['volume']
-    
-    positive_money_flow = np.zeros_like(raw_money_flow)
-    negative_money_flow = np.zeros_like(raw_money_flow)
-    
-    typical_price_array = typical_price.to_numpy()
+    df['TP'] = (df['high'] + df['low'] + df['close']) / 3
+    df['Raw Money Flow'] = df['TP'] * df['volume']
+    df['prev_TP'] = df['TP'].shift()
 
-    for i in range(1, len(df)):
-        if typical_price_array[i] > typical_price_array[i - 1]:
-            positive_money_flow[i] = raw_money_flow.iloc[i]
-        else:
-            negative_money_flow[i] = raw_money_flow.iloc[i]
+    df['Positive Money Flow'] = np.where(df['TP'] > df['prev_TP'], df['Raw Money Flow'], 0)
+    df['Negative Money Flow'] = np.where(df['TP'] < df['prev_TP'], df['Raw Money Flow'], 0)
 
-    positive_money_flow_series = pd.Series(positive_money_flow, index=df.index)
-    negative_money_flow_series = pd.Series(negative_money_flow, index=df.index)
+    df['Positive MF Sum'] = df['Positive Money Flow'].rolling(window=period).sum()
+    df['Negative MF Sum'] = df['Negative Money Flow'].rolling(window=period).sum()
+    df['MFR'] = df['Positive MF Sum'] / df['Negative MF Sum']
 
-    positive_money_flow_sum = positive_money_flow_series.rolling(window=period).sum()
-    negative_money_flow_sum = negative_money_flow_series.rolling(window=period).sum()
+    df['MFI1'] = 100 - (100 / (1 + df['MFR']))
 
-    money_flow_ratio = positive_money_flow_sum / negative_money_flow_sum
-    mfi = 100 - (100 / (1 + money_flow_ratio))
-
-    df['MFI'] = mfi
+    df.drop(columns=['TP', 'Raw Money Flow', 'prev_TP', 'Positive Money Flow', 'Negative Money Flow', 
+                     'Positive MF Sum', 'Negative MF Sum', 'MFR'])
 
     return df
 
