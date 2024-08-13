@@ -7,6 +7,8 @@ import pandas as pd
 TABLE_STOCK_CODE = 'stock.stock_code'
 TABLE_STOCK_PRICE = 'stock.stock_price'
 
+THRESHOLD_VOLUME = 1000
+
 # Functions
 def GetStockCodeInformation(connection):
     df = SQLSentence.QuerySQL(TABLE_STOCK_CODE, connection)
@@ -16,7 +18,8 @@ def GetAllData(connection):
     df = SQLSentence.QuerySQL(TABLE_STOCK_PRICE, connection)
     df = df.drop('id', axis=1)
     df['date'] = pd.to_datetime(df['date'])
-    df = df[df['volume'] != 0]
+    df = df[df['volume'] >= THRESHOLD_VOLUME]
+    df[df.columns[df.columns.get_loc("open"):df.columns.get_loc("volume")]] = df[df.columns[2:-1]].astype(float)
     
     return df
 
@@ -42,7 +45,6 @@ def connect_to_database():
 def Init():
     with connect_to_database() as connection:
     
-        # 检查是否连接成功
         if connection.is_connected():
             print(f"Connected to MySQL database {(datetime.now()).strftime('%Y-%m-%d %H:%M:%S')}")
 
