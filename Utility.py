@@ -54,3 +54,34 @@ def Init():
         print(f"Close database {(datetime.now()).strftime('%Y-%m-%d %H:%M:%S')}")
 
         return stock_code_list, code_name_dict, df
+
+def write_train_detail_to_txt(type_id, model_name, test_loss, file_path='model_records.txt'):
+    with open(file_path, 'a') as f:
+        f.write(f"{type_id},{model_name},{test_loss}\n")
+
+def load_best_model_record_txt(type_id, model_name, file_path='model_records.txt'):
+    best_loss = float('inf')
+    with open(file_path, 'r') as f:
+        for line in f:
+            tid, name, loss = line.strip().split(',')
+            if int(tid) == type_id and name == model_name:
+                if float(loss) < best_loss:
+                    best_loss = float(loss)
+    return best_loss
+
+def update_model_record_txt(type_id, model_name, new_test_loss, file_path='model_records.txt'):
+    updated = False
+    lines = []
+    with open(file_path, 'r') as f:
+        for line in f:
+            tid, name, _ = line.strip().split(',')
+            if int(tid) == type_id and name == model_name:
+                line = f"{type_id},{model_name},{new_test_loss}\n"
+                updated = True
+            lines.append(line)
+    
+    with open(file_path, 'w') as f:
+        f.writelines(lines)
+    
+    if not updated:
+        write_train_detail_to_txt(type_id, model_name, new_test_loss, file_path)

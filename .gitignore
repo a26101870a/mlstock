@@ -6,3 +6,5 @@ pyvenv.cfg
 mysql_logging_information.txt
 Set.py
 checkpoint/
+Model.py
+model_records.txt
