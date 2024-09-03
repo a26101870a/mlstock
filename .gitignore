@@ -8,3 +8,4 @@ Set.py
 checkpoint/
 Model.py
 model_records.txt
+prediction/
