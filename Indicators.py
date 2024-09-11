@@ -33,7 +33,7 @@ def GenerateMovingAverage(df, period, price_type='close') -> pd.DataFrame:
 def GenerateZScore(df, period, price_type='close') -> pd.DataFrame:
     df['MA'] = df[price_type].rolling(window=period).mean()
     df['std_MA'] = df[price_type].rolling(window=period).std()
-    df[f'Z-Score_MA{period}_{price_type}'] = (df[price_type] - df['MA'])/df['std_MA']
+    df[f'Z-Score_MA{period}_{price_type}'] = np.where(df['std_MA'] == 0, 0, (df[price_type] - df['MA']) / df['std_MA'])
     return df.drop(columns=['MA', 'std_MA'])
 
 def GenerateADX(df, period=14) -> pd.DataFrame:

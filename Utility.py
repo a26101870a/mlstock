@@ -21,7 +21,7 @@ def GetAllData(connection):
     df = SQLSentence.QuerySQL(TABLE_STOCK_PRICE, connection)
     df = df.drop('id', axis=1)
     df['date'] = pd.to_datetime(df['date'])
-    df = df[(df['volume'] >= THRESHOLD_VOLUME)  & (df['volume'] != float('inf')) & (df['volume'].notna())]
+    df = df[(df['volume'] >= THRESHOLD_VOLUME)]
     df[df.columns[df.columns.get_loc("open"):df.columns.get_loc("volume")]] = df[df.columns[2:-1]].astype(float)
     
     return df
