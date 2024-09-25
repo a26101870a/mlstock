@@ -257,8 +257,7 @@ window_length = 20
 threshold=0.5
 
 # [0, 7, 8, 13, 17, 18, 24, 25, 26, 27, 30, 31, 32, 35, 37]
-# list_selected_type_id = Set.GetInfo('select_stock_list')
-list_selected_type_id = [0, 7, 8, 13, 17, 18, 24, 25, 26, 30, 31, 32, 35, 37]
+list_selected_type_id = Set.GetInfo('select_stock_list')
 current_date = adjust_date((SQLSentence.GetLatestDate(connect))).strftime("%Y-%m-%d")
 
 model_name = 'CNN_LSTM'
