@@ -13,10 +13,10 @@ def GenerateRSI(df: pd.DataFrame, period=14, price_type='close') -> pd.DataFrame
 
 def GenerateBollingBand(df: pd.DataFrame, period=20, price_type='close') -> pd.DataFrame:
     df[f'bb_ma_{price_type}'] = df[price_type].rolling(window=period).mean()
-    df['std'] = df[price_type].rolling(window=period).std()
-    df[f'bb_ub_{price_type}'] = df[f'bb_ma_{price_type}'] + 2*df['std']
-    df[f'bb_lb_{price_type}'] = df[f'bb_ma_{price_type}'] - 2*df['std']
-    return df.drop(columns=['std'])
+    df[f'bb_std_{price_type}'] = df[f'bb_ma_{price_type}'].rolling(window=period).std()
+    df[f'bb_ub_{price_type}'] = df[f'bb_ma_{price_type}'] + 2*df[f'bb_std_{price_type}']
+    df[f'bb_lb_{price_type}'] = df[f'bb_ma_{price_type}'] - 2*df[f'bb_std_{price_type}']
+    return df.drop(columns=[f'bb_std_{price_type}'])
 
 def GenerateMACD(df, short_period=12, long_period=26, macd_period=9, price_type='close') -> pd.DataFrame:
     df['ema_short'] = df[price_type].ewm(span=short_period, adjust=False).mean()
