@@ -5,6 +5,7 @@ import os
 import tqdm
 import pandas as pd
 import numpy as np
+from random import sample
 
 import torch
 import torch.nn as nn
@@ -29,7 +30,7 @@ print('Constant OK')
 
 # Build Basic Data
 connect = Utility.connect_to_database()
-main_data, list_stock_type, dict_code_name, dict_type_name = Utility.fetch_data_from_db()
+main_data, _, dict_code_name, dict_type_name = Utility.fetch_data_from_db()
 
 print('Build Basic Data OK')
 
@@ -246,123 +247,183 @@ def adjust_date(date):
     # 星期五、六、日，將日期調整至下周一
     else:
         return date + datetime.timedelta(days=(7 - weekday))
-    
+
+def proccess_prediction(model_name, postfix, device, window_length, list_target_pct, directory_path, main_data, dict_type_name, connect):
+
+    list_selected_type_id = Set.GetInfo('select_stock_list')
+    model_class = getattr(Model, model_name)
+
+    for target_pct in list_target_pct:
+
+        file_name = f'{model_name}_{postfix}_{int(target_pct*100)}%.txt'
+        file_path = os.path.join(directory_path, file_name) 
+
+        with open(file_path, 'w') as f:
+            pass
+
+        with open(file_path, 'a', encoding='utf-8') as f:
+            f.write(f"------------------------------Model: {model_name}_{postfix}")
+
+            for type_id in tqdm.tqdm(list_selected_type_id):
+
+                list_unique_code_from_data = (SQLSentence.GetCodeByTypeId(type_id, connect))['code'].tolist()
+
+                model = model_class(GetDatasetShape(main_data, window_length)).to(device)
+                model.eval()
+                list_code_investable = []
+
+                try:
+                    model.load_state_dict(torch.load(f"{PATH_CHECKPOINT}/type_{type_id}/type_{type_id}_{model.__class__.__name__}_Target_{int(target_pct*100)}_{postfix}", weights_only=True))
+                except:
+                    print(f'{dict_type_name[type_id]} No preserved model: {model.__class__.__name__}')
+                    continue
+
+                for code in list_unique_code_from_data:
+                    output = predict_result(main_data, code, model, device, target_pct, window_length)
+                    if output > threshold:
+                        list_code_investable.append((code, output))
+
+                if len(list_code_investable) != 0:
+                    f.write("------------------------------")
+                    f.write(f"\n產業: {dict_type_name[type_id]}\n")
+                    for code, probability in list_code_investable:
+                        f.write(f'{code} {dict_code_name[code]:<10} Prob: {probability}\n')
+            f.write("\n\n")
+
+def get_probability_from_prediction(model_name, postfix, list_target_pct, directory_path):
+    dict_code_pred = {}
+
+    for target_pct in list_target_pct:
+
+        file_name = f'{model_name}_{postfix}_{int(target_pct*100)}%.txt'
+        file_path = os.path.join(directory_path, file_name) 
+
+        with open(file_path, 'r', encoding='utf-8') as file:
+
+            dict_code_pred[target_pct] = []
+
+            for line in file:
+                if 'Prob' in line:
+                    dict_code_pred[target_pct].append(int(line[:4]))
+
+    return dict_code_pred
+
+def build_bull_tier_list(dict_code_pred,list_target_pct, directory_path):
+
+    file_name = f'bull_tier.txt'
+    file_path = os.path.join(directory_path, file_name)
+
+    bull_max, bull_second, bull_third = [], [], []
+
+    with open(file_path, 'w', encoding='utf-8') as f:
+
+        max_value = max(list_target_pct)
+        second_max_value = max([value for value in list_target_pct if value != max_value])
+        third_max_value = max([value for value in list_target_pct if (value != max_value) and (value != second_max_value) ])
+
+        bull_max, bull_second, bull_third = max_value, second_max_value, third_max_value
+
+        tier1 = list(set(dict_code_pred[max_value]) & set(dict_code_pred[second_max_value]) & set(dict_code_pred[third_max_value]))
+        tier2 = list(set(dict_code_pred[second_max_value]) & set(dict_code_pred[third_max_value]))
+
+        f.write(f'Tier 1: {tier1}\n')
+        f.write(f'Tier 2: {tier2}\n\n')
+
+        for value in [max_value, second_max_value, third_max_value]:
+            f.write(f'{int(value*100)}% Code List: {list(dict_code_pred[value])}\n')
+            f.write(f'{int(value*100)}% Length: {len(list(dict_code_pred[value]))}\n')
+
+        f.write(f'\nRandom Select: {sample(dict_code_pred[bull_third],int(len(dict_code_pred[bull_third])*0.5))}\n')
+
+    return bull_max, bull_second, bull_third
+
+def build_bear_tier_list(dict_code_pred, list_target_pct, directory_path):
+
+    file_name = f'bear_tier.txt'
+    file_path = os.path.join(directory_path, file_name)
+
+    bear_max, bear_second, bear_third = [], [], []
+
+    with open(file_path, 'w', encoding='utf-8') as f:
+
+        min_value = min(list_target_pct)
+        second_min_value = min([value for value in list_target_pct if value != min_value])
+        third_min_value = min([value for value in list_target_pct if (value != min_value) and (value != second_min_value) ])
+
+        bear_max, bear_second, bear_third = min_value, second_min_value, third_min_value
+
+        tier1 = list(set(dict_code_pred[min_value]) & set(dict_code_pred[second_min_value]) & set(dict_code_pred[third_min_value]))
+        tier2 = list(set(dict_code_pred[second_min_value]) & set(dict_code_pred[third_min_value]))
+
+        f.write(f'Tier 1: {tier1}\n')
+        f.write(f'Tier 2: {tier2}\n\n')
+
+        for value in [min_value, second_min_value, third_min_value]:
+            f.write(f'{int(value*100)}% Code List: {list(dict_code_pred[value])}\n')
+            f.write(f'{int(value*100)}% Length: {len(list(dict_code_pred[value]))}\n')
+
+        f.write(f'\nRandom Select: {sample(dict_code_pred[bear_third],int(len(dict_code_pred[bear_third])*0.5))}\n')
+
+    return bear_max, bear_second, bear_third
+
+def build_hedging(bull1, bull2, bull3, bear1, bear2, bear3, dict_code_pred, directory_path):
+
+    # file_name = f'hedging.txt'
+    # file_path = os.path.join(directory_path, file_name)
+
+    lbear = dict_code_pred[bear1] + dict_code_pred[bear2] + dict_code_pred[bear3]
+    lbull = dict_code_pred[bull1] + dict_code_pred[bull2] + dict_code_pred[bull3]
+
+    lbear = set(lbear)
+    lbull = set(lbull)
+
+    lhedging = list(lbear.intersection(lbull))
+    non_intersecting_bull = list((lbull - lbear))
+    non_intersecting_bear = list((lbear - lbull))
+
+    # with open(file_path, 'w', encoding='utf-8') as f:
+    #     f.write(str(lhedging))
+
+    with open(os.path.join(directory_path, 'bull_tier.txt'), 'a', encoding='utf-8') as f:
+        f.write(f'\nHedging:  {str(lhedging)}')
+        f.write(f'\nNon Hedging:  {str(non_intersecting_bull)}')
+
+    with open(os.path.join(directory_path, 'bear_tier.txt'),'a', encoding='utf-8') as f:
+        f.write(f'\nHedging:  {str(lhedging)}')
+        f.write(f'\nNon Hedging:  {str(non_intersecting_bear)}')
+
 print('Function OK')
 
-print('Sarting Predict')
-
-# Predict
-list_target_pct = [0.02, 0.03, 0.05, -0.02, -0.03, -0.05]
+print('Proccess Paramaters')
+list_target_pct = [0.02, 0.03, 0.04, -0.02, -0.03, -0.04]
 window_length = 20
-threshold=0.5
+threshold = 0.5
 
-# [0, 7, 8, 13, 17, 18, 24, 25, 26, 27, 30, 31, 32, 35, 37]
+model_name = 'CNN_LSTM'
+postfix='best'
+
 list_selected_type_id = Set.GetInfo('select_stock_list')
 current_date = adjust_date((SQLSentence.GetLatestDate(connect))).strftime("%Y-%m-%d")
 
-model_name = 'CNN_LSTM'
-ModelClass = getattr(Model, model_name)
-postfix='best'
-
 directory_path = f'prediction/{current_date}'
-os.mkdir(directory_path) 
 
-for target_pct in list_target_pct:
+if not os.path.exists(directory_path):
+    os.mkdir(directory_path) 
 
-    file_name = f'{model_name}_{postfix}_{int(target_pct*100)}%.txt'
-    file_path = os.path.join(directory_path, file_name) 
-
-    with open(file_path, 'w') as f:
-        pass
-
-    with open(file_path, 'a', encoding='utf-8') as f:
-        f.write(f"------------------------------Model: {model_name}_{postfix}")
-
-        for type_id in tqdm.tqdm(list_selected_type_id):
-
-            list_unique_code_from_data = (SQLSentence.GetCodeByTypeId(type_id, connect))['code'].tolist()
-
-            model = ModelClass(GetDatasetShape(main_data, window_length)).to(device)
-            model.eval()
-            list_code_investable = []
-
-            try:
-                model.load_state_dict(torch.load(f"{PATH_CHECKPOINT}/type_{type_id}/type_{type_id}_{model.__class__.__name__}_Target_{int(target_pct*100)}_{postfix}", weights_only=True))
-            except:
-                print(f'{dict_type_name[type_id]} No preserved model: {model.__class__.__name__}')
-                continue
-
-            for code in list_unique_code_from_data:
-                output = predict_result(main_data, code, model, device, target_pct, window_length)
-                if output > threshold:
-                    list_code_investable.append((code, output))
-
-            if len(list_code_investable) != 0:
-                f.write("------------------------------")
-                f.write(f"\n產業: {dict_type_name[type_id]}\n")
-                for code, probability in list_code_investable:
-                    f.write(f'{code} {dict_code_name[code]:<10} Prob: {probability}\n')
-        f.write("\n\n")
-
+print('Sarting Predict')
+proccess_prediction(model_name, postfix, device, window_length, list_target_pct, directory_path, main_data, dict_type_name, connect)
 print('Complete Prediction')
 
 print('Calculate Tier')
-
-dict_code_pred = {}
-
-for target_pct in list_target_pct:
-
-    file_name = f'{model_name}_{postfix}_{int(target_pct*100)}%.txt'
-    file_path = os.path.join(directory_path, file_name) 
-
-    with open(file_path, 'r', encoding='utf-8') as file:
-
-        dict_code_pred[target_pct] = []
-
-        for line in file:
-            if 'Prob' in line:
-                dict_code_pred[target_pct].append(int(line[:4]))
+dict_code_pred = get_probability_from_prediction(model_name, postfix, list_target_pct, directory_path)
 
 print('Build Bull Tier List')
-
-file_name = f'bull_tier.txt'
-file_path = os.path.join(directory_path, file_name)
-
-with open(file_path, 'w', encoding='utf-8') as f:
-
-    max_value = max(list_target_pct)
-    second_max_value = max([value for value in list_target_pct if value != max_value])
-    third_max_value = max([value for value in list_target_pct if (value != max_value) and (value != second_max_value) ])
-
-    tier1 = list(set(dict_code_pred[max_value]) & set(dict_code_pred[second_max_value]) & set(dict_code_pred[third_max_value]))
-    tier2 = list(set(dict_code_pred[second_max_value]) & set(dict_code_pred[third_max_value]))
-
-    f.write(f'Tier 1: {tier1}\n')
-    f.write(f'Tier 2: {tier2}\n\n')
-
-    for value in [max_value, second_max_value, third_max_value]:
-        f.write(f'{int(value*100)}% Code List: {list(dict_code_pred[value])}\n')
-        f.write(f'{int(value*100)}% Length: {len(list(dict_code_pred[value]))}\n')
+bull_max, bull_second, bull_third = build_bull_tier_list(dict_code_pred, list_target_pct, directory_path)
 
 print('Build Bear Tier List')
+bear_max, bear_second, bear_third = build_bear_tier_list(dict_code_pred, list_target_pct, directory_path)
 
-file_name = f'bear_tier.txt'
-file_path = os.path.join(directory_path, file_name)
-
-with open(file_path, 'w', encoding='utf-8') as f:
-
-    min_value = min(list_target_pct)
-    second_min_value = min([value for value in list_target_pct if value != min_value])
-    third_min_value = min([value for value in list_target_pct if (value != min_value) and (value != second_min_value) ])
-
-    tier1 = list(set(dict_code_pred[min_value]) & set(dict_code_pred[second_min_value]) & set(dict_code_pred[third_min_value]))
-    tier2 = list(set(dict_code_pred[second_min_value]) & set(dict_code_pred[third_min_value]))
-
-    f.write(f'Tier 1: {tier1}\n')
-    f.write(f'Tier 2: {tier2}\n\n')
-
-    for value in [min_value, second_min_value, third_min_value]:
-        f.write(f'{int(value*100)}% Code List: {list(dict_code_pred[value])}\n')
-        f.write(f'{int(value*100)}% Length: {len(list(dict_code_pred[value]))}\n')
+print('Build Hedging File')
+build_hedging(bull_max, bull_second, bull_third, bear_max, bear_second, bear_third, dict_code_pred, directory_path)
 
 print(datetime.datetime.now())
