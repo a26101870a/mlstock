@@ -45,22 +45,22 @@ def connect_to_database():
         database="stock"
     )
 
-def write_train_detail_to_txt(type_id, target_pct, model_name, test_loss, file_path='model_records.txt'):
+def write_train_detail_to_txt(type_id, target_pct, model_name, test_loss, test_acc, file_path='model_records.txt'):
     with open(file_path, 'a') as f:
-        f.write(f"{type_id},{target_pct},{model_name},{test_loss}\n")
+        f.write(f"{type_id},{target_pct},{model_name},{test_loss},{test_acc}%\n")
 
 def load_best_model_record_txt(type_id, target_pct, model_name, file_path='model_records.txt'):
     best_loss = float('inf')
     target_pct = str(int(target_pct*100))+"%"
     with open(file_path, 'r') as f:
         for line in f:
-            tid, target, name, loss = line.strip().split(',')
+            tid, target, name, loss, _ = line.strip().split(',')
             if int(tid) == type_id and target_pct == target and name == model_name:
                 if float(loss) < best_loss:
                     best_loss = float(loss)
     return best_loss
 
-def update_model_record_txt(type_id, target_pct, model_name, new_test_loss, file_path='model_records.txt'):
+def update_model_record_txt(type_id, target_pct, model_name, new_test_loss, new_test_acc, file_path='model_records.txt'):
     updated = False
     lines = []
 
@@ -68,9 +68,9 @@ def update_model_record_txt(type_id, target_pct, model_name, new_test_loss, file
 
     with open(file_path, 'r') as f:
         for line in f:
-            tid, target, name, _ = line.strip().split(',')
+            tid, target, name, _, _ = line.strip().split(',')
             if int(tid) == type_id and target_pct == target and name == model_name:
-                line = f"{type_id},{target_pct},{model_name},{new_test_loss}\n"
+                line = f"{type_id},{target_pct},{model_name},{new_test_loss},{new_test_acc}%\n"
                 updated = True
             lines.append(line)
     
