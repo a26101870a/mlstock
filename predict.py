@@ -2,15 +2,11 @@ import datetime
 print(datetime.datetime.now())
 
 import os
+import csv
 import tqdm
-import pandas as pd
+import torch
 import numpy as np
 from random import sample
-
-import torch
-import torch.nn as nn
-import torch.nn.utils as utils
-from torch.utils.data import Dataset, DataLoader
 
 import Set
 import Utility
@@ -25,6 +21,7 @@ TABLE_TYPE = 'stock.stock_type'
 TABLE_CODE_TYPE = 'stock.stock_code_type'
 
 PATH_CHECKPOINT = 'checkpoint'
+PATH_MITAKE_EXPORT_DATA = 'D:/MitakeGU/USER/OUT/export_data.csv'
 
 print('Constant OK')
 
@@ -51,81 +48,6 @@ if torch.cuda.is_available():
 print('Build Environment OK')
 
 # Some Functions
-
-# Dataset
-class StockDataset(Dataset):
-    def __init__(self, data, label):
-        self.data = data
-        self.label = label
-        self.shape = data.shape
-
-    def __getitem__(self, index):
-        data = torch.tensor(self.data[index], dtype=torch.float32)
-        label = torch.tensor(self.label[index], dtype=torch.float32)
-
-        return data, label
-    
-    def __len__(self):
-        return len(self.data)
-    
-# Invoke Model
-def invoke_model(mode, model, dataloader, criterion, device, optimizer=None):
-    
-    model.train() if mode == 'train' else model.eval()
-
-    total_loss = 0
-    correct, accuracy_count = 0, 0
-    investable_count, not_investable_count = 0, 0
-    actual_investable_count, actual_not_investable_count = 0, 0
-    type1_correct, type2_correct = 0, 0
-    type1_count, type2_count = 0, 0
-
-    for input, label in tqdm.tqdm(dataloader):
-        input, label = input.to(device), label.to(device)
-
-        if mode == 'train' and optimizer is not None:
-            optimizer.zero_grad()
-        
-        outputs = model(input)
-        loss = criterion(outputs.squeeze(1), label)
-        
-        total_loss+=loss.detach().cpu().item()
-        
-        predicted = (outputs.squeeze(1) > 0).float()
-
-        if mode == 'train' and optimizer is not None:
-            loss.backward()
-            optimizer.step()
-
-        correct += (predicted == label).sum().item()
-        accuracy_count += label.size(0)
-
-        investable_count += (predicted == 1).sum().item()
-        not_investable_count += (predicted == 0).sum().item()
-
-        actual_investable_count += (label == 1).sum().item()
-        actual_not_investable_count += (label == 0).sum().item()
-
-        t1_correct, t2_correct, t1_cnt, t2_cnt = calculate_correct_count(predicted, label)
-        type1_correct += t1_correct
-        type2_correct += t2_correct
-        type1_count += t1_cnt
-        type2_count += t2_cnt
-
-    print(f'\n預測可投資的次數: {investable_count} / 實際上預測可投資的次數: {actual_investable_count}')
-    print(f'不可投資的次數: {not_investable_count} / 實際上不可投資的次數: {actual_not_investable_count}')
-
-    avg_loss = round(total_loss/len(dataloader), 6)
-    accuracy =  round((correct/accuracy_count)*100 , 2)
-    type1_correct_ratio = round((type1_correct/type1_count)*100, 2)
-    type2_correct_ratio = round((type2_correct/type2_count)*100, 2)
-
-    print(f'\n{mode} Loss: {avg_loss}')
-    print(f"Accuracy: {accuracy}%")
-    print(f"\nType1 Correct Ratio: {type1_correct_ratio}%")
-    print(f"Type2 Correct Ratio: {type2_correct_ratio}%\n")
-
-    return avg_loss, type1_correct_ratio, type2_correct_ratio
 
 def process_stock_data(stock_data, target, window_length, predict = False):
     stock_data = stock_data.drop(['code', 'date'], axis=1).reset_index(drop=True)
@@ -162,63 +84,6 @@ def process_stock_data(stock_data, target, window_length, predict = False):
 
     return np.array(data_merged), np.array(label_merged)
 
-def build_dataset(main_data, code_list, target, window_length):
-    all_train_data = []
-    all_test_data = []
-
-    all_train_label = []
-    all_test_label = []
-
-    for code in code_list:
-        stock_data = main_data[main_data['code'] == code].copy()
-
-        data, label = process_stock_data(stock_data, target, window_length)
-        train_size = int(0.9 * len(data))
-               
-        train_data = data[:train_size]
-        test_data = data[train_size:]
-
-        train_label = label[:train_size]
-        test_label = label[train_size:]
-
-        all_train_data.extend(train_data)
-        all_test_data.extend(test_data)
-
-        all_train_label.extend(train_label)
-        all_test_label.extend(test_label)
-    
-    return np.array(all_train_data), np.array(all_test_data), np.array(all_train_label), np.array(all_test_label)
-
-def build_dataloader(main_data, code_list, target, batch_size, window_length):
-    train_data, test_data, train_label, test_label = build_dataset(main_data, code_list, target, window_length)
-    dataset_train = StockDataset(train_data, train_label)
-    dataset_test = StockDataset(test_data, test_label)
-    datalaoder_train = DataLoader(dataset_train, batch_size, shuffle=True)
-    datalaoder_test = DataLoader(dataset_test, batch_size, shuffle=False)
-
-    return datalaoder_train, datalaoder_test
-
-def calculate_correct_count(predicted, label):
-    type1_correct = 0
-    type2_correct = 0
-    type1_count = 0
-    type2_count = 0
-
-    for i in range(label.size(0)):
-        # Type1
-        if label[i] == 1:
-            type1_count += 1
-            if predicted[i] == 1:
-                type1_correct += 1
-
-        # Type2
-        elif label[i] == 0:
-            type2_count += 1
-            if predicted[i] == 0:
-                type2_correct += 1
-
-    return type1_correct, type2_correct, type1_count, type2_count
-
 def predict_result(main_data, code, model, device, target, window_length, min_period=100):
     stock_data = main_data[main_data['code'] == code].tail(min_period).copy()
     data = process_stock_data(stock_data, target, window_length, predict=True)
@@ -248,7 +113,10 @@ def adjust_date(date):
     else:
         return date + datetime.timedelta(days=(7 - weekday))
 
-def proccess_prediction(model_name, postfix, device, window_length, list_target_pct, directory_path, main_data, dict_type_name, connect):
+def conver_to_int_percent(percent: float):
+    return f"{int(percent*100)}%"
+
+def proccess_prediction_old(model_name, postfix, device, window_length, list_target_pct, threshold, directory_path, main_data, dict_type_name, connect):
 
     list_selected_type_id = Set.GetInfo('select_stock_list')
     model_class = getattr(Model, model_name)
@@ -263,7 +131,7 @@ def proccess_prediction(model_name, postfix, device, window_length, list_target_
 
         with open(file_path, 'a', encoding='utf-8') as f:
             f.write(f"------------------------------Model: {model_name}_{postfix}")
-
+            print(f'Processing {model_name} {target_pct}')
             for type_id in tqdm.tqdm(list_selected_type_id):
 
                 list_unique_code_from_data = (SQLSentence.GetCodeByTypeId(type_id, connect))['code'].tolist()
@@ -392,14 +260,165 @@ def build_hedging(bull1, bull2, bull3, bear1, bear2, bear3, dict_code_pred, dire
         f.write(f'\nHedging:  {str(lhedging)}')
         f.write(f'\nNon Hedging:  {str(non_intersecting_bear)}')
 
+def proccess_prediction(list_model_name, postfix, device, window_length, list_target_pct, directory_path, main_data, dict_type_name, connect):
+
+    list_selected_type_id = Set.GetInfo('select_stock_list')
+
+    for model_name in list_model_name:
+        model_class = getattr(Model, model_name)
+        #讀取txt as dictionary
+        for target_pct in list_target_pct:
+
+            file_name = f'{model_name}_{postfix}_{int(target_pct*100)}%_a.txt'
+            file_path = os.path.join(directory_path, file_name)
+
+            with open(file_path, 'w') as f:
+                pass
+
+            with open(file_path, 'a', encoding='utf-8') as f:
+
+                f.write(f"------------------------------Model: {model_name}_{postfix}")
+                print(f'Processing {model_name} {int(target_pct*100)}%')
+                for type_id in tqdm.tqdm(list_selected_type_id):
+
+                    list_unique_code_from_data = (SQLSentence.GetCodeByTypeId(type_id, connect))['code'].tolist()
+
+                    model = model_class(GetDatasetShape(main_data, window_length)).to(device)
+                    model.eval()
+
+                    list_all_output = []
+
+                    try:
+                        model.load_state_dict(torch.load(f"{PATH_CHECKPOINT}/type_{type_id}/type_{type_id}_{model.__class__.__name__}_Target_{int(target_pct*100)}_{postfix}", weights_only=True))
+                    except:
+                        print(f'{dict_type_name[type_id]} No preserved model: {model.__class__.__name__}')
+                        continue
+
+                    for code in list_unique_code_from_data:
+                        output = predict_result(main_data, code, model, device, target_pct, window_length)
+                        list_all_output.append((code, output))
+                        
+                    f.write("------------------------------")
+                    f.write(f"\n產業: {dict_type_name[type_id]} {type_id}\n")
+                    
+                    for code, probability in list_all_output:
+                        f.write(f'{code} {dict_code_name[code]:<10} Prob: {probability}\n')
+
+                f.write("\n\n")
+
+def convert_to_str_percent(percent: float):
+    return f"{int(percent*100)}%"
+
+def get_dict_accuracy():
+    file_path = 'model_records.csv'
+
+    # Model: { target_pct: type_id: test_accuracy}
+    # model_name - target_pct - type_id
+    dict_accuracy = {}
+
+    with open(file_path, 'r', encoding='utf-8') as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            if row['model_name'] and row['target_pct'] and row['type_id'] and row['test_fp']:
+                dict_accuracy[(row['model_name'], row['target_pct'], int(row['type_id']))] = float(row['test_acc'][:-1]) 
+    return dict_accuracy
+
+def check_trade_type(list_target_percent):
+    if all(percent > 0 for percent in list_target_percent):
+        return 'bull'
+    elif all(percent < 0 for percent in list_target_percent):
+        return 'bear'
+    else:
+        raise ValueError("Inconsistent target percent values: list_target_percent must contain either all positive or all negative values.")
+    
+def generate_dict_asc_output_sorted_code(list_model_name, list_target_percent, postfix, directory_path):
+    dict_accuracy = get_dict_accuracy()
+    dict_data = {}
+
+    for model_name in list_model_name:
+        for target_perctent in list_target_percent:
+            with open(f'{directory_path}/{model_name}_{postfix}_{convert_to_str_percent(target_perctent)}_a.txt', 'r', encoding='utf-8') as file:
+                dict_code_output = {}
+                type_id = 0
+
+                for line in file:
+                    if '產業' in line:
+                        type_id = int((line.split(' '))[-1])
+                        weight = dict_accuracy[(model_name, convert_to_str_percent(target_perctent), type_id)]
+
+                    if 'Prob' in line:
+                        code = int(line[:4])
+                        output = float((line.split(' '))[-1])
+                        current_output = round(weight * output, 8)
+
+                        # If the company code is reapted in multiple type id, then it should take the highest output.
+                        if code not in dict_code_output:
+                            dict_code_output[code] = current_output
+                        else:
+                            if dict_code_output[code] < current_output:
+                                dict_code_output[code] = current_output
+                                
+                dict_data[(model_name, convert_to_str_percent(target_perctent))] = dict(sorted(dict_code_output.items(), key=lambda item: item[1], reverse=True))
+
+    return dict_data
+
+def ordered_output_code(list_model_name, list_target_percent, dict_data):
+    dict_desc_sorted_code = {}
+    for i, model_name in enumerate(list_model_name):
+        for target_percent in list_target_percent:
+            if i != 0:
+                dict_desc_sorted_code = {value: (dict_desc_sorted_code[value]+index) for index, value in enumerate(dict_data[(model_name, convert_to_str_percent(target_percent))])}
+            else:
+                dict_desc_sorted_code = {value: index for index, value in enumerate(dict_data[(model_name, convert_to_str_percent(target_percent))])}
+
+    list_desc_sorted_code = [key for key, _ in sorted(dict_desc_sorted_code.items(), key=lambda item: item[1])]
+
+    return dict_desc_sorted_code, list_desc_sorted_code
+
+def build_tier_list(list_model_name, list_target_percent, postfix, directory_path, target_number=10):
+
+    dict_output_sorted_code = generate_dict_asc_output_sorted_code(list_model_name, list_target_percent, postfix, directory_path)
+    dict_result, list_result = ordered_output_code(list_model_name, list_target_percent, dict_output_sorted_code)
+
+    file_name = f'{check_trade_type(list_target_percent)}.txt'
+    file_path = os.path.join(directory_path, file_name)
+
+    with open(file_path, 'w') as f:
+        pass
+
+    with open(file_path, 'w', encoding='utf-8') as f:
+        f.write(str(list_result[:target_number]))
+        f.write('\n')
+        f.write(str(list_result))
+        f.write('\n')
+        f.write(str(dict(sorted(dict_result.items(), key=lambda item: item[1], reverse=True))))
+
+    return list_result[:target_number]
+
+def export_data_to_MITAKE(bull_code_list, bear_code_list):
+    with open(PATH_MITAKE_EXPORT_DATA, 'r') as file:
+        reader = csv.reader(file)
+        rows = list(reader)
+
+        rows[1] = rows[1][:2] + bull_code_list  # 修改 bull row
+        rows[2] = rows[2][:2] + bear_code_list  # 修改 bear row
+        rows[3] = rows[3][:2] + list(set(bull_code_list) & set(bear_code_list))  # 修改 hedging row
+
+        # 寫回檔案（覆蓋模式）
+        with open(PATH_MITAKE_EXPORT_DATA, 'w', newline='') as file:
+            writer = csv.writer(file)
+            writer.writerows(rows)
+
 print('Function OK')
 
 print('Proccess Paramaters')
-list_target_pct = [0.02, 0.03, 0.04, -0.02, -0.03, -0.04]
-window_length = 20
-threshold = 0.5
 
-model_name = 'CNN_LSTM'
+list_model_name = ['CNN_LSTM', 'TCN']
+list_target_pct = [0.02, 0.03, -0.02, -0.03]
+list_bull_target = [0.02, 0.03]
+list_bear_target = [-0.02, -0.03]
+
+window_length = 20
 postfix='best'
 
 list_selected_type_id = Set.GetInfo('select_stock_list')
@@ -411,19 +430,15 @@ if not os.path.exists(directory_path):
     os.mkdir(directory_path) 
 
 print('Sarting Predict')
-proccess_prediction(model_name, postfix, device, window_length, list_target_pct, directory_path, main_data, dict_type_name, connect)
+proccess_prediction(list_model_name, postfix, device, window_length, list_target_pct, directory_path, main_data, dict_type_name, connect)
 print('Complete Prediction')
 
-print('Calculate Tier')
-dict_code_pred = get_probability_from_prediction(model_name, postfix, list_target_pct, directory_path)
-
 print('Build Bull Tier List')
-bull_max, bull_second, bull_third = build_bull_tier_list(dict_code_pred, list_target_pct, directory_path)
+bull_code_list = build_tier_list(list_model_name, list_bull_target, postfix, directory_path)
 
 print('Build Bear Tier List')
-bear_max, bear_second, bear_third = build_bear_tier_list(dict_code_pred, list_target_pct, directory_path)
+bear_code_list = build_tier_list(list_model_name, list_bear_target, postfix, directory_path)
 
-print('Build Hedging File')
-build_hedging(bull_max, bull_second, bull_third, bear_max, bear_second, bear_third, dict_code_pred, directory_path)
+export_data_to_MITAKE(bull_code_list, bear_code_list)
 
 print(datetime.datetime.now())

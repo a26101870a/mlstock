@@ -2,6 +2,7 @@ import SQLSentence
 import mysql
 import datetime
 import pandas as pd
+import csv
 
 # Constants
 TABLE_STOCK_CODE = 'stock.stock_code'
@@ -45,40 +46,69 @@ def connect_to_database():
         database="stock"
     )
 
-def write_train_detail_to_txt(type_id, target_pct, model_name, test_loss, test_acc, file_path='model_records.txt'):
-    with open(file_path, 'a') as f:
-        f.write(f"{type_id},{target_pct},{model_name},{test_loss},{test_acc}%\n")
+def update_model_record_txt(record, file_path='model_records.csv'):
 
-def load_best_model_record_txt(type_id, target_pct, model_name, file_path='model_records.txt'):
+    record['target_pct'] = f"{int(record['target_pct'] * 100)}%"
+    updated = False
+    updated_rows = []
+
+    with open(file_path, 'r', encoding='utf-8') as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            if (int(row['type_id']) == record['type_id'] and 
+                row['target_pct'] == record['target_pct'] and 
+                row['model_name'] == record['model_name']):
+
+                row.update({
+                    'test_loss': record['test_loss'],
+                    'test_acc': f"{record['test_acc']}%",
+                    'test_fp': f"{record['test_fp']}%",
+                    'test_fn': f"{record['test_fn']}%",
+                    'train_loss': record['train_loss'],
+                    'train_acc': f"{record['train_acc']}%",
+                    'train_fp': f"{record['train_fp']}%",
+                    'train_fn': f"{record['train_fn']}%"
+                })
+                updated = True
+            updated_rows.append(row)
+
+    # 若無符合條件的行，將新記錄加入
+    if not updated:
+        updated_rows.append({
+            'type_id': record['type_id'],
+            'target_pct': record['target_pct'],
+            'model_name': record['model_name'],
+            'test_loss': record['test_loss'],
+            'test_acc': f"{record['test_acc']}%",
+            'test_fp': f"{record['test_fp']}%",
+            'test_fn': f"{record['test_fn']}%",
+            'train_loss': record['train_loss'],
+            'train_acc': f"{record['train_acc']}%",
+            'train_fp': f"{record['train_fp']}%",
+            'train_fn': f"{record['train_fn']}%"
+        })
+
+    # 將更新後的資料寫回檔案
+    with open(file_path, 'w', encoding='utf-8', newline='') as f:
+        fieldnames = ['type_id', 'target_pct', 'model_name', 'test_loss', 'test_acc', 
+                      'test_fp', 'test_fn', 'train_loss', 'train_acc', 'train_fp', 'train_fn']
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(updated_rows)
+
+def load_best_model_record_txt(type_id, target_pct, model_name, file_path='model_records.csv'):
     best_loss = float('inf')
     target_pct = str(int(target_pct*100))+"%"
-    with open(file_path, 'r') as f:
-        for line in f:
-            tid, target, name, loss, _ = line.strip().split(',')
-            if int(tid) == type_id and target_pct == target and name == model_name:
-                if float(loss) < best_loss:
-                    best_loss = float(loss)
-    return best_loss
 
-def update_model_record_txt(type_id, target_pct, model_name, new_test_loss, new_test_acc, file_path='model_records.txt'):
-    updated = False
-    lines = []
-
-    target_pct = str(int(target_pct*100))+"%"
-
-    with open(file_path, 'r') as f:
-        for line in f:
-            tid, target, name, _, _ = line.strip().split(',')
-            if int(tid) == type_id and target_pct == target and name == model_name:
-                line = f"{type_id},{target_pct},{model_name},{new_test_loss},{new_test_acc}%\n"
-                updated = True
-            lines.append(line)
-    
-    with open(file_path, 'w') as f:
-        f.writelines(lines)
-    
-    if not updated:
-        write_train_detail_to_txt(type_id, target_pct, model_name, new_test_loss, file_path)
+    with open(file_path, 'r', encoding='utf-8') as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            if (int(row['type_id']) == type_id and 
+                row['target_pct'] == target_pct and 
+                row['model_name'] == model_name):
+                    if float(row['test_loss']) < best_loss:
+                        best_loss = float(row['test_loss'][:-1])
+            return best_loss
 
 def fetch_data_from_db():
     connect = connect_to_database()
