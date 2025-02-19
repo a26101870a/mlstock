@@ -62,12 +62,12 @@ def update_model_record_txt(record, file_path='model_records.csv'):
                 row.update({
                     'test_loss': record['test_loss'],
                     'test_acc': f"{record['test_acc']}%",
-                    'test_fp': f"{record['test_fp']}%",
-                    'test_fn': f"{record['test_fn']}%",
+                    'test_precision': f"{record['test_precision']}%",
+                    'test_recall': f"{record['test_recall']}%",
                     'train_loss': record['train_loss'],
                     'train_acc': f"{record['train_acc']}%",
-                    'train_fp': f"{record['train_fp']}%",
-                    'train_fn': f"{record['train_fn']}%"
+                    'train_precision': f"{record['train_precision']}%",
+                    'train_recall': f"{record['train_recall']}%"
                 })
                 updated = True
             updated_rows.append(row)
@@ -80,18 +80,18 @@ def update_model_record_txt(record, file_path='model_records.csv'):
             'model_name': record['model_name'],
             'test_loss': record['test_loss'],
             'test_acc': f"{record['test_acc']}%",
-            'test_fp': f"{record['test_fp']}%",
-            'test_fn': f"{record['test_fn']}%",
+            'test_precision': f"{record['test_precision']}%",
+            'test_recall': f"{record['test_recall']}%",
             'train_loss': record['train_loss'],
             'train_acc': f"{record['train_acc']}%",
-            'train_fp': f"{record['train_fp']}%",
-            'train_fn': f"{record['train_fn']}%"
+            'train_precision': f"{record['train_precision']}%",
+            'train_recall': f"{record['train_recall']}%"
         })
 
     # 將更新後的資料寫回檔案
     with open(file_path, 'w', encoding='utf-8', newline='') as f:
         fieldnames = ['type_id', 'target_pct', 'model_name', 'test_loss', 'test_acc', 
-                      'test_fp', 'test_fn', 'train_loss', 'train_acc', 'train_fp', 'train_fn']
+                      'test_precision', 'test_recall', 'train_loss', 'train_acc', 'train_precision', 'train_recall']
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()
         writer.writerows(updated_rows)
@@ -109,6 +109,8 @@ def load_best_model_record_txt(type_id, target_pct, model_name, file_path='model
                     if float(row['test_loss']) < best_loss:
                         best_loss = float(row['test_loss'][:-1])
             return best_loss
+        
+    return best_loss
 
 def fetch_data_from_db():
     connect = connect_to_database()

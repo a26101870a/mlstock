@@ -10,3 +10,4 @@ Model.py
 model_records.txt
 prediction/
 model_records.csv
+model_records/

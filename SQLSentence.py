@@ -95,3 +95,24 @@ def GetCodeByTypeId(type_id: int, connection:Union[PooledMySQLConnection, MySQLC
     except Exception as e:
         print(f"Error: {e}")
         return pd.DataFrame()
+    
+def GetLatestDatePrice(connection:Union[PooledMySQLConnection, MySQLConnectionAbstract]) -> pd.DataFrame:
+
+    sql_query = f"""
+        SELECT 
+            *
+        FROM
+            stock.stock_price
+        WHERE
+            date = (SELECT date FROM stock.stock_price order by date desc limit 1);
+    """
+
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute(sql_query)
+            records = cursor.fetchall()
+            column_names = [desc[0] for desc in cursor.description]
+            return pd.DataFrame(records, columns=column_names)
+    except Exception as e:
+        print(f"Error: {e}")
+        return pd.DataFrame()
