@@ -11,3 +11,6 @@ class BaseModel(nn.Module):
         
     def load(self, path):
         self.load_state_dict(torch.load(path))
+
+    def get_model_name(self):
+        return self.__class__.__name__
