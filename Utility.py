@@ -49,6 +49,7 @@ def connect_to_database():
 def update_model_record_txt(record, file_path='model_records.csv'):
 
     record['target_pct'] = f"{int(record['target_pct'] * 100)}%"
+    record['version'] = str(record['version'])
     updated = False
     updated_rows = []
 
@@ -57,7 +58,8 @@ def update_model_record_txt(record, file_path='model_records.csv'):
         for row in reader:
             if (int(row['type_id']) == record['type_id'] and 
                 row['target_pct'] == record['target_pct'] and 
-                row['model_name'] == record['model_name']):
+                row['model_name'] == record['model_name'] and 
+                row['version'] == record['version']):
 
                 row.update({
                     'test_loss': record['test_loss'],
@@ -78,6 +80,7 @@ def update_model_record_txt(record, file_path='model_records.csv'):
             'type_id': record['type_id'],
             'target_pct': record['target_pct'],
             'model_name': record['model_name'],
+            'version': record['version'],
             'test_loss': record['test_loss'],
             'test_acc': f"{record['test_acc']}%",
             'test_precision': f"{record['test_precision']}%",
@@ -90,22 +93,24 @@ def update_model_record_txt(record, file_path='model_records.csv'):
 
     # 將更新後的資料寫回檔案
     with open(file_path, 'w', encoding='utf-8', newline='') as f:
-        fieldnames = ['type_id', 'target_pct', 'model_name', 'test_loss', 'test_acc', 
+        fieldnames = ['type_id', 'target_pct', 'model_name', 'version', 'test_loss', 'test_acc', 
                       'test_precision', 'test_recall', 'train_loss', 'train_acc', 'train_precision', 'train_recall']
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()
         writer.writerows(updated_rows)
 
-def load_best_model_record_txt(type_id, target_pct, model_name, file_path='model_records.csv'):
+def load_best_model_record_txt(type_id, target_pct, model_name, version, file_path='model_records.csv'):
     best_loss = float('inf')
     target_pct = str(int(target_pct*100))+"%"
+    version = str(version)
 
     with open(file_path, 'r', encoding='utf-8') as f:
         reader = csv.DictReader(f)
         for row in reader:
             if (int(row['type_id']) == type_id and 
                 row['target_pct'] == target_pct and 
-                row['model_name'] == model_name):
+                row['model_name'] == model_name and
+                row['version'] == version):
                     if float(row['test_loss']) < best_loss:
                         best_loss = float(row['test_loss'][:-1])
             return best_loss
