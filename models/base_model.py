@@ -10,7 +10,7 @@ class BaseModel(nn.Module):
         torch.save(self.state_dict(), path)
         
     def load(self, path):
-        self.load_state_dict(torch.load(path, weight_only=True))
+        self.load_state_dict(torch.load(path, weights_only=True))
 
     def get_model_name(self):
         return self.__class__.__name__
