@@ -13,6 +13,8 @@ import Utility
 import SQLSentence
 import Model
 
+from models import FullyConnected, CNNLSTM
+
 print('Package OK')
 
 # Constants
@@ -118,10 +120,16 @@ def conver_to_int_percent(percent: float):
 
 def proccess_prediction(list_model_name, postfix, device, window_length, list_target_pct, directory_path, main_data, dict_type_name, version, connect):
 
+    dict_model = {
+        'CNNLSTM': CNNLSTM,
+        'FullyConnected': FullyConnected,
+    }
+
     list_selected_type_id = Set.GetInfo('select_stock_list')
 
     for model_name in list_model_name:
-        model_class = getattr(Model, model_name)
+        # model_class = getattr(Model, model_name)
+
         #讀取txt as dictionary
         for target_pct in list_target_pct:
 
@@ -139,16 +147,19 @@ def proccess_prediction(list_model_name, postfix, device, window_length, list_ta
 
                     list_unique_code_from_data = (SQLSentence.GetCodeByTypeId(type_id, connect))['code'].tolist()
 
-                    model = model_class(GetDatasetShape(main_data, window_length)).to(device)
+                    model = dict_model[model_name](GetDatasetShape(main_data, window_length)).to(device)
+                    # model = model.to(device)
                     model.eval()
 
-                    path_model_save = f'{PATH_CHECKPOINT}/type_{type_id}/type_{type_id}_{model.__class__.__name__}_Target_{int(target_pct*100)}_{postfix}_{version}'
+                    # path_model_save = f'{PATH_CHECKPOINT}/type_{type_id}/type_{type_id}_{model.__class__.__name__}_Target_{int(target_pct*100)}_{postfix}_{version}'
+                    path_model_save = f'models/checkpoint/type_{type_id}/type_{type_id}_{model.get_model_name()}_Target_{int(target_pct*100)}_v{str(version)}_{postfix}'
                     list_all_output = []
 
                     try:
-                        model.load_state_dict(torch.load(path_model_save, weights_only=True))
+                        # model.load_state_dict(torch.load(path_model_save, weights_only=True))
+                        model.load(path_model_save)
                     except:
-                        print(f'{dict_type_name[type_id]} No preserved model: {model.__class__.__name__}')
+                        print(f'{dict_type_name[type_id]} No preserved model: {model.get_model_name()}')
                         continue
 
                     for code in list_unique_code_from_data:
@@ -168,7 +179,8 @@ def convert_to_str_percent(percent: float):
 
 def get_dict_accuracy(version):
     
-    file_path = f'model_records/model_records_{version}.csv'
+    # file_path = f'model_records/model_records_{version}.csv'
+    file_path = f'models/model_records/model_records.csv'
 
     # Model: { target_pct: type_id: test_accuracy}
     # model_name - target_pct - type_id
@@ -177,7 +189,7 @@ def get_dict_accuracy(version):
     with open(file_path, 'r', encoding='utf-8') as f:
         reader = csv.DictReader(f)
         for row in reader:
-            if row['model_name'] and row['target_pct'] and row['type_id'] and row['test_acc']:
+            if row['model_name'] and row['target_pct'] and row['type_id'] and row['test_acc'] and row['version'] == str(version):
                 dict_accuracy[(row['model_name'], row['target_pct'], int(row['type_id']))] = float(row['test_acc'][:-1]) 
     return dict_accuracy
 
@@ -298,7 +310,7 @@ dict_model = {
     2: 'FullyConnected1Layer',
 }
 
-list_model_name = ['CNN_LSTM', 'TCN', 'FullyConnected1Layer']
+list_model_name = ['CNNLSTM', 'FullyConnected']
 list_target_pct = [0.02, -0.02]
 list_bull_target = [0.02]
 list_bear_target = [-0.02]
@@ -306,7 +318,7 @@ tuple_price_range = (50, 496)
 
 window_length = 20
 postfix='best'
-version = 'v3'
+version = 4
 
 list_selected_type_id = Set.GetInfo('select_stock_list')
 current_date = adjust_date((SQLSentence.GetLatestDate(connect))).strftime("%Y-%m-%d")
@@ -361,7 +373,7 @@ dict_code_prob = {}
 for code in  list_all_code:
     dict_code_prob[code] = ''
 
-list_mode_name = ['CNN_LSTM_best', 'TCN_best', 'FullyConnected1Layer_best']
+list_mode_name = ['CNNLSTM_best', 'FullyConnected_best']
 list_target_percent = ['2%', '-2%']
 
 for target_percent in list_target_percent:
