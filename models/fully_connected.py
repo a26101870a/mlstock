@@ -15,6 +15,6 @@ class FullyConnected(BaseModel):
     
     def forward(self, x):
         # Flatten the input
-        x = x.view(x.shape[0], -1)  
+        x = x.reshape(x.shape[0], -1)  
         x = self.fc(x)
         return x
