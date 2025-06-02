@@ -11,12 +11,42 @@ def GenerateRSI(df: pd.DataFrame, period=14, price_type='close') -> pd.DataFrame
     df[f'rsi_{price_type}'] = round((df['ema_u'] / (df['ema_u'] + df['ema_d'])) * 100, 2)
     return df.drop(columns=['prev_price', 'is_rised', 'u', 'd', 'ema_u', 'ema_d'])
 
+def RSIFlag(df):
+    df = GenerateRSI(df)
+
+    overbought_threshold = 70
+    oversold_threshold = 30
+
+    rsi_name = df.columns[-1]
+
+    df['Overbought_Flag'] = (df[rsi_name] > overbought_threshold).astype('int8')
+    df['Oversold_Flag'] = (df[rsi_name] < oversold_threshold).astype('int8')
+    df['Neutral_Flag'] = ((df[rsi_name] <= overbought_threshold) & 
+                        (df[rsi_name] >= oversold_threshold)).astype('int8')
+    return df
+
 def GenerateBollingBand(df: pd.DataFrame, period=20, price_type='close') -> pd.DataFrame:
     df[f'bb_ma_{price_type}'] = df[price_type].rolling(window=period).mean()
     df[f'bb_std_{price_type}'] = df[f'bb_ma_{price_type}'].rolling(window=period).std()
     df[f'bb_ub_{price_type}'] = df[f'bb_ma_{price_type}'] + 2*df[f'bb_std_{price_type}']
     df[f'bb_lb_{price_type}'] = df[f'bb_ma_{price_type}'] - 2*df[f'bb_std_{price_type}']
     return df.drop(columns=[f'bb_std_{price_type}'])
+
+def BollingBandFlag(df):
+
+    # Get bb_ma_{price_type}, bb_ub_{price_type}, bb_lb_{price_type}
+    df = GenerateBollingBand(df)
+
+    ma = df.columns[-3]
+    upper_band = df.columns[-2]
+    lower_band = df.columns[-1]
+
+    df['Band Width'] = df[upper_band] - df[lower_band]
+    df['Price Above Upper'] = (df['close'] > df[upper_band]).astype('int8')
+    df['Price Below Lower'] = (df['close'] < df[lower_band]).astype('int8')
+    df['Band Squeeze'] = (df['Band Width'] / df[ma]).astype('float32')
+
+    return df.drop(columns=['Band Width', ma, upper_band, lower_band])
 
 def GenerateMACD(df, short_period=12, long_period=26, macd_period=9, price_type='close') -> pd.DataFrame:
     df['ema_short'] = df[price_type].ewm(span=short_period, adjust=False).mean()
@@ -62,6 +92,27 @@ def GenerateCCI(df, period=20):
     df['CCI'] = CONSTANT*(df['typical_price'] - df['typical_price'].rolling(window=period).mean())/\
                 (abs((df['typical_price'] - df['typical_price'].rolling(window=period).mean()))).rolling(window=period).mean()
     return df.drop(columns=['typical_price'])
+
+def CCIFlags(df):
+    df = GenerateCCI(df)
+
+    df['CCI_Overbought'] = ((df['CCI'] > 100) & (df['CCI'].shift(1) <= 100)).astype('int8')
+    df['CCI_Oversold'] = ((df['CCI'] < -100) & (df['CCI'].shift(1) >= -100)).astype('int8')
+
+    df['Bullish_Divergence'] = 0
+    df['Bearish_Divergence'] = 0
+
+    for i in range(2, len(df)):
+        if df['close'][i] < df['close'][i-1] and df['CCI'][i] > df['CCI'][i-1]:
+            df.at[i, 'Bullish_Divergence'] = 1
+        if df['close'][i] > df['close'][i-1] and df['CCI'][i] < df['CCI'][i-1]:
+            df.at[i, 'Bearish_Divergence'] = 1
+
+    df['CCI'] = df['CCI'].astype('float32')
+    df['Bullish_Divergence'] = df['Bullish_Divergence'].astype('int8')
+    df['Bearish_Divergence'] = df['Bearish_Divergence'].astype('int8')
+
+    return df
 
 def GenerateKST(df):
     df['ROC1'] = 100*(df['close']/df['close'].shift(10)-1)
@@ -323,3 +374,43 @@ def GenerateKeltnerChannel(df, period=20, multiplier=2):
     df['LowerBand'] = df['MiddleLine'] - (multiplier * df['ATR'])
 
     return df.drop(columns=['TypicalPrice', 'TR', 'ATR'])
+
+def GenerateADX(df, period=14) -> pd.DataFrame:
+    df['prev_high'] = df['high'].shift()
+    df['prev_low'] = df['low'].shift()
+    df['prev_close'] = df['close'].shift()
+    df['UpMove'] = df['high'] - df['prev_high']
+    df['DownMove'] = df['prev_low'] - df['low']
+    df['TR'] = np.maximum(df['high'], df['prev_close']) - np.minimum(df['low'], df['prev_close'])
+    df['ATR'] = df['TR'].rolling(window=period).mean()
+    df['+DM'] = np.where((df['UpMove']>df['DownMove']) & (df['UpMove']>0), 
+                               df['UpMove'], 0).astype(float)
+    df['-DM'] = np.where((df['DownMove']>df['UpMove']) & (df['DownMove']>0), 
+                            df['DownMove'], 0).astype(float)
+    df['+DI'] = 100*(df['+DM'].rolling(window=period).mean()/df['ATR']).astype('float32')
+    df['-DI'] = 100*(df['-DM'].rolling(window=period).mean()/df['ATR']).astype('float32')
+    df['DX'] = 100*(abs(df['+DI'] - df['-DI'])/abs(df['+DI'] + df['-DI']))
+    df['ADX'] = (df['DX'].rolling(window=period).mean()).astype('float32')
+    
+    return df.drop(columns=['prev_high', 'prev_low', 'prev_close', 'UpMove', 'DownMove',
+                            '+DM', '-DM', 'TR', 'ATR', 'DX'])
+
+def GenerateMACDAndFlag(df, short_period=12, long_period=26, macd_period=9, price_type='close'):
+    df['ema_short'] = df[price_type].ewm(span=short_period, adjust=False).mean()
+    df['ema_long'] = df[price_type].ewm(span=long_period, adjust=False).mean()
+    df['dif'] = df['ema_short'] - df['ema_long']
+    df['dem'] = df['dif'].ewm(span=macd_period, adjust=False).mean()
+    df[f'macd_{price_type}'] = (df['dif'] - df['dem']).astype('float32')
+    df['macd_crossover'] = ((df['dif'] > df['dem']) & (df['dif'].shift(1) <= df['dem'].shift(1))).astype('int8') - \
+                           ((df['dif'] < df['dem']) & (df['dif'].shift(1) >= df['dem'].shift(1))).astype('int8')
+    df['macd_direction'] = (df['dif'].diff()).astype('float32')
+    df['price_change'] = df[price_type].diff()
+    df['macd_divergence'] = (df['macd_direction'] * df['price_change'] < 0).astype('int8')
+    return df.drop(columns=['ema_short', 'ema_long', 'dif', 'dem', 'price_change'])
+
+def CalculatePercentChange(df):
+    df['body_pct'] = 100*round((df['close'] - df['open'])/df['open'], 4).astype('float32')
+    df['uppper_shadow_pct'] = 100*round((df['high'] - np.maximum(df['open'], df['close']))/np.maximum(df['open'], df['close']), 4).astype('float32')
+    df['lower_shadow_pct'] = 100*abs(round((df['low'] - np.minimum(df['open'], df['close']))/np.minimum(df['open'], df['close']), 4)).astype('float32')
+
+    return df
