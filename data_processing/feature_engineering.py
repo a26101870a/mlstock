@@ -14,7 +14,7 @@ def Zscore_Normalize(df: pd.DataFrame, list_period: list[int] = [5, 10, 20], lis
 
     return df
 
-def Feature(df):
+def SetFeature(df):
     df = Indicators.CalculatePercentChange(df)
     df = Indicators.RSIFlag(df)
     df = Zscore_Normalize(df)
