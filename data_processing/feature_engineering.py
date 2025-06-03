@@ -1,4 +1,4 @@
-import Indicators
+from . import Indicators
 
 def Feature(df):
     df = Indicators.CalculatePercentChange(df)
